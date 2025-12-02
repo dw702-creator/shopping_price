@@ -1,85 +1,56 @@
-import os
-import csv
-import tkinter as tk
-from tkinter import filedialog
-from datetime import datetime
+import streamlit as st
+import pandas as pd
 
-def select_input_folder():
-    """Use GUI to select input folder"""
-    root = tk.Tk()
-    root.withdraw()
-    folder_path = filedialog.askdirectory(title="Select Folder Containing Price Files")
-    return folder_path
+# -----------------------------
+# 1. 상품 DB 로드
+# -----------------------------
+# GitHub raw URL 예시
+DB_URL = "https://raw.githubusercontent.com/username/repo/main/product_db.csv"
 
+@st.cache_data
+def load_db():
+    df = pd.read_csv(DB_URL)
+    return df
 
-def read_price_files(folder_path):
-    """
-    Reads all .txt and .csv files inside folder_path.
-    Returns a list of (item, price, source_file)
-    """
-    all_items = []
+# -----------------------------
+# 2. Streamlit UI
+# -----------------------------
+st.title("👕 옷 검색 & 가격순 추천")
 
-    for filename in os.listdir(folder_path):
-        if filename.endswith(".txt") or filename.endswith(".csv"):
-            file_path = os.path.join(folder_path, filename)
+df = load_db()
 
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    reader = csv.reader(f)
+st.sidebar.header("검색 조건 선택")
+color = st.sidebar.text_input("색상 (예: 회색, 검정, 흰색)")
+type_ = st.sidebar.text_input("종류 (예: 후드집업, 티셔츠)")
+design = st.sidebar.text_input("디자인 (예: 검정 글씨, 로고, 심플)")
 
-                    for row in reader:
-                        if len(row) >= 2:
-                            item = row[0].strip()
-                            price = row[1].strip().replace(",", "")
+# -----------------------------
+# 3. 조건 필터링
+# -----------------------------
+filtered = df.copy()
 
-                            if price.isdigit():
-                                price = int(price)
-                                all_items.append((item, price, filename))
+if color:
+    filtered = filtered[filtered['color'].str.contains(color, case=False)]
+if type_:
+    filtered = filtered[filtered['type'].str.contains(type_, case=False)]
+if design:
+    filtered = filtered[filtered['design'].str.contains(design, case=False)]
 
-            except Exception as e:
-                print(f"Error reading {filename}: {e}")
+# 가격순 정렬
+filtered = filtered.sort_values(by="price").head(20)
 
-    return all_items
+# -----------------------------
+# 4. 결과 출력
+# -----------------------------
+st.subheader(f"🔎 검색 결과 ({len(filtered)}개)")
 
+if filtered.empty:
+    st.write("조건에 맞는 상품이 없습니다.")
+else:
+    for idx, row in filtered.iterrows():
+        st.markdown(f"### {row['name']}")
+        st.write(f"색상: {row['color']}, 종류: {row['type']}, 디자인: {row['design']}")
+        st.write(f"가격: {row['price']} 원")
+        st.write(f"[구매 링크]({row['url']})")
+        st.markdown("---")
 
-def save_result(data):
-    """
-    Saves sorted data to a CSV file
-    """
-    output_filename = f"price_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
-    with open(output_filename, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Item", "Price", "Source File"])
-
-        for row in data:
-            writer.writerow(row)
-
-    print(f"\n✔ 결과 저장됨: {output_filename}\n")
-
-
-def main():
-    print("📂 가격 파일이 들어있는 폴더를 선택하세요.")
-    folder_path = select_input_folder()
-
-    if not folder_path:
-        print("❌ 폴더가 선택되지 않았습니다. 프로그램 종료.")
-        return
-
-    print("\n📄 파일 읽는 중...")
-    data = read_price_files(folder_path)
-
-    if not data:
-        print("❌ 불러온 데이터가 없습니다.")
-        return
-
-    # 가격 기준 오름차순 정렬
-    data.sort(key=lambda x: x[1])
-
-    save_result(data)
-
-    print("🎉 작업 완료!")
-
-
-if __name__ == "__main__":
-    main()
